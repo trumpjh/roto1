@@ -2,8 +2,12 @@
 class LottoAnalyzer {
     constructor() {
         this.lottoData = [];
+        this.recentLottoData = [];
         this.frequency = {};
         this.allNumbers = Array.from({length: 45}, (_, i) => i + 1);
+        this.frequentNumbers = [];
+        this.normalNumbers = [];
+        this.missingNumbers = [];
     }
 
     // 외부 API에서 로또 번호 데이터 가져오기
@@ -40,44 +44,46 @@ class LottoAnalyzer {
     // 샘플 데이터 (테스트용)
     getSampleData() {
         return [
-            [1, 5, 12, 23, 34, 42],
-            [2, 8, 15, 28, 38, 43],
-            [3, 9, 18, 31, 39, 44],
-            [4, 11, 20, 32, 40, 45],
-            [5, 13, 22, 35, 41, 7],
-            [6, 14, 25, 36, 6, 8],
-            [7, 16, 26, 37, 11, 19],
-            [8, 17, 27, 33, 12, 24],
-            [9, 19, 29, 34, 13, 30],
-            [10, 21, 30, 35, 14, 21],
-            [1, 6, 15, 28, 40, 43],
-            [2, 7, 16, 29, 41, 44],
-            [3, 8, 17, 30, 42, 45],
-            [4, 9, 18, 31, 9, 10],
-            [5, 10, 19, 32, 23, 26],
-            [6, 11, 20, 33, 24, 28],
-            [7, 12, 21, 34, 25, 32],
-            [8, 13, 22, 35, 27, 38],
-            [9, 14, 23, 36, 29, 39],
-            [10, 15, 24, 37, 31, 40]
+            [7, 14, 18, 23, 31, 42],
+            [11, 16, 25, 32, 38, 44],
+            [3, 9, 17, 28, 35, 43],
+            [2, 12, 21, 34, 39, 45],
+            [5, 13, 26, 33, 40, 8],
+            [4, 15, 22, 29, 36, 41],
+            [1, 19, 27, 30, 37, 6],
+            [8, 20, 24, 31, 38, 10],
+            [6, 14, 28, 35, 42, 44],
+            [9, 16, 23, 32, 39, 43],
+            [2, 11, 25, 34, 40, 45],
+            [3, 13, 27, 36, 41, 7],
+            [5, 18, 29, 37, 12, 21],
+            [4, 17, 30, 38, 44, 15],
+            [1, 22, 33, 39, 11, 26],
+            [10, 19, 24, 28, 35, 42],
+            [8, 14, 31, 40, 43, 6],
+            [7, 16, 25, 32, 37, 45],
+            [9, 20, 27, 34, 38, 13],
+            [2, 23, 29, 36, 41, 12]
         ];
     }
 
     // 로또 데이터 분석
     async analyze() {
         this.lottoData = await this.fetchLottoData();
+        // 최근 20회차만 사용
+        this.recentLottoData = this.lottoData.slice(-20);
         this.calculateFrequency();
         return this.getAnalysisResult();
     }
 
-    // 빈도수 계산
+    // 빈도수 계산 (최근 20회차 기준)
     calculateFrequency() {
         this.frequency = {};
         this.allNumbers.forEach(num => {
             this.frequency[num] = 0;
         });
 
-        this.lottoData.forEach(draw => {
+        this.recentLottoData.forEach(draw => {
             if (Array.isArray(draw)) {
                 draw.forEach(num => {
                     if (this.frequency.hasOwnProperty(num)) {
@@ -86,203 +92,101 @@ class LottoAnalyzer {
                 });
             }
         });
-    }
 
-    // 분석 결과 반환
-    getAnalysisResult() {
+        // 번호를 3가지 카테고리로 분류
         const sortedByFrequency = Object.entries(this.frequency)
             .sort((a, b) => b[1] - a[1])
             .map(([num, freq]) => ({ num: parseInt(num), freq }));
 
-        const frequentNumbers = sortedByFrequency.slice(0, 10).map(item => item.num);
-        const missingNumbers = sortedByFrequency
+        // 자주 나온 번호 (상위 12개)
+        this.frequentNumbers = sortedByFrequency.slice(0, 12).map(item => item.num);
+        
+        // 나오지 않은 번호 (0회)
+        this.missingNumbers = sortedByFrequency
             .filter(item => item.freq === 0)
             .map(item => item.num);
+        
+        // 보통으로 나온 번호 (나머지 중에서)
+        this.normalNumbers = sortedByFrequency
+            .slice(12)
+            .filter(item => item.freq > 0)
+            .map(item => item.num);
+    }
 
+    // 분석 결과 반환
+    getAnalysisResult() {
         return {
-            frequentNumbers,
-            missingNumbers,
+            frequentNumbers: this.frequentNumbers,
+            missingNumbers: this.missingNumbers,
+            normalNumbers: this.normalNumbers,
             frequency: this.frequency,
-            sortedByFrequency
+            recentDataCount: this.recentLottoData.length
         };
     }
 
-    // 10가지 추천 방법
+    // 10가지 추천 번호 생성 (정교한 조합)
     generateRecommendations(analysis) {
         const recommendations = [];
+        const usedCombinations = new Set();
 
-        // 1. 가장 자주 나온 번호들 (상위 6개)
-        recommendations.push({
-            title: '① 최고 인기 번호들',
-            description: '가장 자주 나온 상위 6개 번호',
-            numbers: analysis.sortedByFrequency.slice(0, 6).map(item => item.num)
-        });
+        // 10개의 서로 다른 추천 생성
+        for (let i = 0; i < 10; i++) {
+            let recommendation;
+            let attempts = 0;
 
-        // 2. 중간 정도 나온 번호들
-        const midRange = analysis.sortedByFrequency.slice(5, 15);
-        recommendations.push({
-            title: '② 중간 인기 번호들',
-            description: '중간 정도 자주 나온 번호들',
-            numbers: this.selectRandom(midRange.map(item => item.num), 6)
-        });
+            // 중복되지 않는 조합 찾기
+            do {
+                const frequentCount = 3 + Math.floor(Math.random() * 2); // 3~4개
+                const missingCount = 2 + Math.floor(Math.random() * 2);  // 2~3개
+                const normalCount = 6 - frequentCount - missingCount;    // 1~2개
 
-        // 3. 아예 나오지 않은 번호 포함
-        recommendations.push({
-            title: '③ 미사용 번호 포함',
-            description: '나오지 않은 번호를 포함한 추천',
-            numbers: this.combineNumbers(
-                analysis.sortedByFrequency.slice(0, 3).map(item => item.num),
-                analysis.missingNumbers.slice(0, 3)
-            )
-        });
+                const selectedFrequent = this.selectRandomDistinct(analysis.frequentNumbers, frequentCount);
+                const selectedMissing = this.selectRandomDistinct(analysis.missingNumbers, missingCount);
+                const selectedNormal = this.selectRandomDistinct(analysis.normalNumbers, normalCount);
 
-        // 4. 홀수/짝수 균형
-        recommendations.push({
-            title: '④ 홀수/짝수 균형',
-            description: '홀수 3개, 짝수 3개로 균형',
-            numbers: this.balanceOddEven(analysis.sortedByFrequency.map(item => item.num))
-        });
+                const numbers = [...selectedFrequent, ...selectedMissing, ...selectedNormal]
+                    .sort((a, b) => a - b);
+                
+                const comboKey = numbers.join(',');
+                
+                if (!usedCombinations.has(comboKey) && numbers.length === 6) {
+                    usedCombinations.add(comboKey);
+                    recommendation = {
+                        title: `추천 ${i + 1}`,
+                        numbers: numbers,
+                        frequentCount: frequentCount,
+                        missingCount: missingCount,
+                        normalCount: normalCount,
+                        description: `자주나온: ${frequentCount}개 | 미사용: ${missingCount}개 | 보통: ${normalCount}개`
+                    };
+                    break;
+                }
+                
+                attempts++;
+            } while (attempts < 50);
 
-        // 5. 낮은 번호/높은 번호 균형
-        recommendations.push({
-            title: '⑤ 번호 범위 균형',
-            description: '1~22: 3개, 23~45: 3개',
-            numbers: this.balanceLowHigh(analysis.sortedByFrequency.map(item => item.num))
-        });
-
-        // 6. 최근 회차 많이 나온 번호들
-        const recentData = this.lottoData.slice(-7);
-        const recentFreq = {};
-        recentData.forEach(draw => {
-            if (Array.isArray(draw)) {
-                draw.forEach(num => {
-                    recentFreq[num] = (recentFreq[num] || 0) + 1;
-                });
+            if (recommendation) {
+                recommendations.push(recommendation);
             }
-        });
-        const recentSorted = Object.entries(recentFreq)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 6)
-            .map(item => parseInt(item[0]));
-        recommendations.push({
-            title: '⑥ 최근 인기 번호들',
-            description: '최근 7회차에서 자주 나온 번호',
-            numbers: recentSorted.length === 6 ? recentSorted : 
-                     this.padNumbers(recentSorted, analysis.sortedByFrequency.map(item => item.num))
-        });
-
-        // 7. 이전 회차 많이 나온 번호들
-        const previousData = this.lottoData.slice(0, 7);
-        const previousFreq = {};
-        previousData.forEach(draw => {
-            if (Array.isArray(draw)) {
-                draw.forEach(num => {
-                    previousFreq[num] = (previousFreq[num] || 0) + 1;
-                });
-            }
-        });
-        const previousSorted = Object.entries(previousFreq)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 6)
-            .map(item => parseInt(item[0]));
-        recommendations.push({
-            title: '⑦ 과거 인기 번호들',
-            description: '처음 7회차에서 자주 나온 번호',
-            numbers: previousSorted.length === 6 ? previousSorted : 
-                     this.padNumbers(previousSorted, analysis.sortedByFrequency.map(item => item.num))
-        });
-
-        // 8. 분산된 번호들 (넓게 퍼진)
-        recommendations.push({
-            title: '⑧ 분산된 번호',
-            description: '1~45 범위에 고르게 분산',
-            numbers: this.selectDistributed()
-        });
-
-        // 9. 클러스터 번호들 (가까운 번호들)
-        recommendations.push({
-            title: '⑨ 클러스터 번호',
-            description: '비슷한 범위 번호들로 구성',
-            numbers: this.selectClustered()
-        });
-
-        // 10. 랜덤 선택
-        recommendations.push({
-            title: '⑩ 행운의 선택',
-            description: '무작위 선택 (운에 맡기기)',
-            numbers: this.selectRandom(this.allNumbers, 6)
-        });
+        }
 
         return recommendations;
     }
 
-    // 도우미 함수들
-    selectRandom(numbers, count) {
-        const shuffled = [...numbers].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, count).sort((a, b) => a - b);
-    }
-
-    combineNumbers(group1, group2) {
-        return [...group1, ...group2].slice(0, 6).sort((a, b) => a - b);
-    }
-
-    balanceOddEven(numbers) {
-        const odd = numbers.filter(n => n % 2 === 1).slice(0, 3);
-        const even = numbers.filter(n => n % 2 === 0).slice(0, 3);
-        return [...odd, ...even].slice(0, 6).sort((a, b) => a - b);
-    }
-
-    balanceLowHigh(numbers) {
-        const low = numbers.filter(n => n <= 22).slice(0, 3);
-        const high = numbers.filter(n => n > 22).slice(0, 3);
-        return [...low, ...high].slice(0, 6).sort((a, b) => a - b);
-    }
-
-    selectDistributed() {
-        const result = [];
-        const step = 45 / 6;
-        for (let i = 0; i < 6; i++) {
-            const min = Math.floor(i * step) + 1;
-            const max = Math.floor((i + 1) * step);
-            const range = Array.from({length: max - min + 1}, (_, j) => min + j);
-            const selected = range[Math.floor(Math.random() * range.length)];
-            result.push(selected);
-        }
-        return result.sort((a, b) => a - b);
-    }
-
-    selectClustered() {
-        const result = [];
-        const clusters = [
-            [1, 10],
-            [11, 20],
-            [21, 30],
-            [31, 40],
-            [41, 45]
-        ];
+    // 중복 없이 무작위 선택
+    selectRandomDistinct(arr, count) {
+        if (!arr || arr.length === 0) return [];
+        const selected = [];
+        const available = [...arr];
         
-        // 5개 클러스터에서 각각 1-2개씩
-        for (let i = 0; i < 5 && result.length < 6; i++) {
-            const [min, max] = clusters[i];
-            const range = Array.from({length: max - min + 1}, (_, j) => min + j);
-            const selected = range[Math.floor(Math.random() * range.length)];
-            result.push(selected);
+        const actualCount = Math.min(count, available.length);
+        for (let i = 0; i < actualCount; i++) {
+            const idx = Math.floor(Math.random() * available.length);
+            selected.push(available[idx]);
+            available.splice(idx, 1);
         }
         
-        if (result.length < 6) {
-            result.push(this.selectRandom(this.allNumbers, 1)[0]);
-        }
-        
-        return result.sort((a, b) => a - b);
-    }
-
-    padNumbers(numbers, fallback) {
-        if (numbers.length === 6) return numbers;
-        const needed = 6 - numbers.length;
-        const additional = fallback
-            .filter(n => !numbers.includes(n))
-            .slice(0, needed);
-        return [...numbers, ...additional].sort((a, b) => a - b);
+        return selected;
     }
 }
 
@@ -304,8 +208,10 @@ loadBtn.addEventListener('click', async () => {
         const analysis = await analyzer.analyze();
         
         // 분석 결과 표시
+        displayAnalysisInfo(analysis);
         displayFrequentNumbers(analysis.frequentNumbers);
         displayMissingNumbers(analysis.missingNumbers);
+        displayNormalNumbers(analysis.normalNumbers);
         analysisResult.style.display = 'block';
 
         // 추천 결과 표시
@@ -321,9 +227,21 @@ loadBtn.addEventListener('click', async () => {
     }
 });
 
+function displayAnalysisInfo(analysis) {
+    const infoDiv = document.getElementById('analysisInfo');
+    if (infoDiv) {
+        infoDiv.innerHTML = `
+            <p><strong>📊 분석 기준:</strong> 최근 ${analysis.recentDataCount}회차 데이터</p>
+            <p><strong>🔥 자주 나온 번호:</strong> ${analysis.frequentNumbers.length}개</p>
+            <p><strong>❄️ 나오지 않은 번호:</strong> ${analysis.missingNumbers.length}개</p>
+            <p><strong>⚪ 보통 나온 번호:</strong> ${analysis.normalNumbers.length}개</p>
+        `;
+    }
+}
+
 function displayFrequentNumbers(numbers) {
     frequentNumbersDiv.innerHTML = numbers
-        .map(num => `<span class="number-tag">${num}</span>`)
+        .map(num => `<span class="number-tag frequent">${num}</span>`)
         .join('');
 }
 
@@ -337,11 +255,29 @@ function displayMissingNumbers(numbers) {
     }
 }
 
+function displayNormalNumbers(numbers) {
+    const normalDiv = document.getElementById('normalNumbers');
+    if (normalDiv) {
+        if (numbers.length === 0) {
+            normalDiv.innerHTML = '<p style="color: #666;">보통 나온 번호가 없습니다.</p>';
+        } else {
+            normalDiv.innerHTML = numbers
+                .map(num => `<span class="number-tag normal">${num}</span>`)
+                .join('');
+        }
+    }
+}
+
 function displayRecommendations(recommendations) {
     recommendationsGrid.innerHTML = recommendations
-        .map(rec => `
+        .map((rec, idx) => `
             <div class="recommendation-card">
                 <h4>${rec.title}</h4>
+                <div class="combination-info">
+                    <span class="combo-badge frequent">자주: ${rec.frequentCount}</span>
+                    <span class="combo-badge missing">미사용: ${rec.missingCount}</span>
+                    <span class="combo-badge normal">보통: ${rec.normalCount}</span>
+                </div>
                 <div class="recommendation-numbers">
                     ${rec.numbers.map(num => `<div class="lotto-number">${num}</div>`).join('')}
                 </div>
@@ -349,4 +285,37 @@ function displayRecommendations(recommendations) {
             </div>
         `)
         .join('');
+}
+
+// 스크린샷 함수
+function captureScreenshot() {
+    const element = document.getElementById('recommendationSection');
+    if (!element) {
+        alert('추천 번호 섹션을 찾을 수 없습니다.');
+        return;
+    }
+
+    // html2canvas 라이브러리 사용
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    script.onload = function() {
+        html2canvas(element, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false,
+            allowTaint: true,
+            useCORS: true
+        }).then(canvas => {
+            // 이미지 다운로드
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `로또추천_${new Date().toISOString().slice(0, 10)}.png`;
+            link.click();
+            alert('✅ 이미지가 저장되었습니다!');
+        }).catch(err => {
+            console.error('스크린샷 오류:', err);
+            alert('❌ 스크린샷 저장에 실패했습니다.');
+        });
+    };
+    document.head.appendChild(script);
 }

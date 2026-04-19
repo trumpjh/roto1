@@ -10,7 +10,7 @@
     <div class="container">
         <header>
             <h1>🎰 로또 번호 추천기</h1>
-            <p>데이터 분석 기반 로또 번호 추천</p>
+            <p>데이터 분석 기반 과학적 로또 번호 추천</p>
         </header>
 
         <div class="content">
@@ -22,10 +22,16 @@
                 </div>
                 
                 <div id="analysisResult" class="analysis-result" style="display: none;">
+                    <div id="analysisInfo" class="analysis-info"></div>
+                    
                     <div class="analysis-grid">
                         <div class="analysis-box">
-                            <h3>🔥 자주 나온 번호 (TOP 10)</h3>
+                            <h3>🔥 자주 나온 번호 (TOP 12)</h3>
                             <div id="frequentNumbers" class="number-list"></div>
+                        </div>
+                        <div class="analysis-box">
+                            <h3>⚪ 보통 나온 번호</h3>
+                            <div id="normalNumbers" class="number-list"></div>
                         </div>
                         <div class="analysis-box">
                             <h3>❄️ 나오지 않은 번호 (MISSING)</h3>
@@ -36,15 +42,19 @@
             </section>
 
             <section class="recommendation-section" id="recommendationSection" style="display: none;">
-                <h2>💡 추천 번호 (10가지 방법)</h2>
+                <div class="recommendation-header">
+                    <h2>💡 추천 번호 (10가지 조합)</h2>
+                    <button id="screenshotBtn" class="btn-screenshot" onclick="captureScreenshot()">📸 이미지 저장</button>
+                </div>
                 <div class="recommendations-grid" id="recommendationsGrid"></div>
             </section>
 
             <section class="info-section">
                 <h3>📌 정보</h3>
-                <p>데이터 출처: trumpjh.github.io/roto (20회차 로또번호)</p>
-                <p>각 번호는 1~45 범위의 로또 번호입니다.</p>
-                <p>분석 기반으로 10가지 다른 방법으로 추천합니다.</p>
+                <p>✅ 분석 데이터: 최근 20회차 로또 당첨 번호</p>
+                <p>✅ 추천 방식: 자주 나온 번호(3~4개) + 나오지 않은 번호(2~3개) + 보통 나온 번호(1~2개) 조합</p>
+                <p>✅ 총 10개의 서로 다른 번호 추천</p>
+                <p>⚠️ 이 도구는 재미 및 분석 목적입니다. 실제 당첨을 보장하지 않습니다.</p>
             </section>
         </div>
     </div>
