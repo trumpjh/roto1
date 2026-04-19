@@ -1,0 +1,24 @@
+{
+  "name": "lotto-number-recommender",
+  "version": "1.0.0",
+  "description": "로또 번호 분석 및 추천 웹 애플리케이션",
+  "main": "app.js",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "serve": "npx live-server"
+  },
+  "keywords": [
+    "lotto",
+    "로또",
+    "번호",
+    "추천",
+    "분석",
+    "통계"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/roto1"
+  }
+}
