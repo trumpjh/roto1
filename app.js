@@ -124,6 +124,57 @@ class LottoAnalyzer {
         };
     }
 
+    // 열별 분석
+    analyzeByColumns() {
+        const columns = [
+            { name: '1열', range: [1, 7] },
+            { name: '2열', range: [8, 14] },
+            { name: '3열', range: [15, 21] },
+            { name: '4열', range: [22, 28] },
+            { name: '5열', range: [29, 35] },
+            { name: '6열', range: [36, 42] },
+            { name: '7열', range: [43, 45] }
+        ];
+
+        const columnAnalysis = columns.map(col => {
+            const [start, end] = col.range;
+            const columnNumbers = Array.from({length: end - start + 1}, (_, i) => start + i);
+            
+            // 각 열의 번호별 빈도수 계산
+            const columnFrequency = {};
+            columnNumbers.forEach(num => {
+                columnFrequency[num] = this.frequency[num] || 0;
+            });
+
+            // 빈도수 기준 정렬
+            const sortedByFreq = Object.entries(columnFrequency)
+                .sort((a, b) => b[1] - a[1])
+                .map(([num, freq]) => ({ num: parseInt(num), freq }));
+
+            // 통계 계산
+            const frequencies = Object.values(columnFrequency);
+            const totalFreq = frequencies.reduce((a, b) => a + b, 0);
+            const avgFreq = totalFreq / frequencies.length;
+            const maxFreq = Math.max(...frequencies);
+            const minFreq = Math.min(...frequencies);
+
+            return {
+                name: col.name,
+                numbers: columnNumbers,
+                frequency: columnFrequency,
+                sortedByFreq: sortedByFreq,
+                totalFreq: totalFreq,
+                avgFreq: avgFreq.toFixed(2),
+                maxFreq: maxFreq,
+                minFreq: minFreq,
+                topNumber: sortedByFreq[0],
+                topThree: sortedByFreq.slice(0, 3)
+            };
+        });
+
+        return columnAnalysis;
+    }
+
     // 10가지 추천 번호 생성 (정교한 조합)
     generateRecommendations(analysis) {
         const recommendations = [];
@@ -242,6 +293,11 @@ loadBtn.addEventListener('click', async () => {
         displayNormalNumbers(analysis.normalNumbers);
         analysisResult.style.display = 'block';
 
+        // 열별 분석 결과 표시
+        const columnAnalysis = analyzer.analyzeByColumns();
+        displayColumnAnalysis(columnAnalysis);
+        document.getElementById('columnAnalysisSection').style.display = 'block';
+
         // 추천 결과 표시
         const recommendations = analyzer.generateRecommendations(analysis);
         displayRecommendations(recommendations);
@@ -294,6 +350,66 @@ function displayNormalNumbers(numbers) {
                 .join('');
         }
     }
+}
+
+function displayColumnAnalysis(columnAnalysis) {
+    const columnGrid = document.getElementById('columnAnalysisGrid');
+    if (!columnGrid) return;
+
+    columnGrid.innerHTML = columnAnalysis
+        .map(col => `
+            <div class="column-box">
+                <div class="column-header">
+                    <h4>${col.name} <span class="range-info">(${col.numbers.join('-').split(',')[0]}-${col.numbers[col.numbers.length - 1]})</span></h4>
+                </div>
+                
+                <div class="column-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">전체 빈도:</span>
+                        <span class="stat-value">${col.totalFreq}회</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">평균:</span>
+                        <span class="stat-value">${col.avgFreq}회</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">최고:</span>
+                        <span class="stat-value">${col.maxFreq}회</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">최저:</span>
+                        <span class="stat-value">${col.minFreq}회</span>
+                    </div>
+                </div>
+
+                <div class="column-top-numbers">
+                    <h5>🔥 TOP 3 번호</h5>
+                    <div class="top-numbers-display">
+                        ${col.topThree.map((item, idx) => `
+                            <div class="top-number-item">
+                                <div class="rank-badge">${idx + 1}</div>
+                                <div class="number-circle">${item.num}</div>
+                                <div class="frequency-text">${item.freq}회</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="column-all-numbers">
+                    <h5>📊 모든 번호 (빈도순)</h5>
+                    <div class="all-numbers-list">
+                        ${col.sortedByFreq.map(item => `
+                            <div class="number-freq-item" title="${item.num}번: ${item.freq}회">
+                                <span class="freq-num">${item.num}</span>
+                                <span class="freq-bar" style="width: ${(item.freq / col.maxFreq) * 100}%"></span>
+                                <span class="freq-count">${item.freq}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `)
+        .join('');
 }
 
 function displayRecommendations(recommendations) {
