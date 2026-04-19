@@ -128,6 +128,11 @@ class LottoAnalyzer {
     generateRecommendations(analysis) {
         const recommendations = [];
         const usedCombinations = new Set();
+        const allAvailable = [
+            ...analysis.frequentNumbers,
+            ...analysis.normalNumbers,
+            ...analysis.missingNumbers
+        ].filter((v, i, a) => a.indexOf(v) === i); // 중복 제거
 
         // 10개의 서로 다른 추천 생성
         for (let i = 0; i < 10; i++) {
@@ -136,28 +141,51 @@ class LottoAnalyzer {
 
             // 중복되지 않는 조합 찾기
             do {
-                const frequentCount = 3 + Math.floor(Math.random() * 2); // 3~4개
-                const missingCount = 2 + Math.floor(Math.random() * 2);  // 2~3개
-                const normalCount = 6 - frequentCount - missingCount;    // 1~2개
+                const frequentCount = Math.min(3 + Math.floor(Math.random() * 2), analysis.frequentNumbers.length);
+                const missingCount = Math.min(
+                    2 + Math.floor(Math.random() * 2), 
+                    analysis.missingNumbers.length,
+                    6 - frequentCount
+                );
+                const normalCount = 6 - frequentCount - missingCount;
 
-                const selectedFrequent = this.selectRandomDistinct(analysis.frequentNumbers, frequentCount);
-                const selectedMissing = this.selectRandomDistinct(analysis.missingNumbers, missingCount);
-                const selectedNormal = this.selectRandomDistinct(analysis.normalNumbers, normalCount);
+                let selectedFrequent = this.selectRandomDistinct(analysis.frequentNumbers, frequentCount);
+                let selectedMissing = this.selectRandomDistinct(analysis.missingNumbers, missingCount);
+                let selectedNormal = this.selectRandomDistinct(analysis.normalNumbers, normalCount);
+
+                // 개수가 부족하면 다른 카테고리에서 채우기
+                let total = selectedFrequent.length + selectedMissing.length + selectedNormal.length;
+                
+                if (total < 6) {
+                    const remaining = 6 - total;
+                    const available = allAvailable.filter(n => 
+                        !selectedFrequent.includes(n) && 
+                        !selectedMissing.includes(n) && 
+                        !selectedNormal.includes(n)
+                    );
+                    const additional = this.selectRandomDistinct(available, remaining);
+                    selectedNormal = [...selectedNormal, ...additional];
+                }
 
                 const numbers = [...selectedFrequent, ...selectedMissing, ...selectedNormal]
+                    .slice(0, 6)
                     .sort((a, b) => a - b);
                 
                 const comboKey = numbers.join(',');
                 
                 if (!usedCombinations.has(comboKey) && numbers.length === 6) {
                     usedCombinations.add(comboKey);
+                    const actualFrequentCount = selectedFrequent.length;
+                    const actualMissingCount = selectedMissing.length;
+                    const actualNormalCount = numbers.length - actualFrequentCount - actualMissingCount;
+                    
                     recommendation = {
                         title: `추천 ${i + 1}`,
                         numbers: numbers,
-                        frequentCount: frequentCount,
-                        missingCount: missingCount,
-                        normalCount: normalCount,
-                        description: `자주나온: ${frequentCount}개 | 미사용: ${missingCount}개 | 보통: ${normalCount}개`
+                        frequentCount: actualFrequentCount,
+                        missingCount: actualMissingCount,
+                        normalCount: actualNormalCount,
+                        description: `자주나온: ${actualFrequentCount}개 | 미사용: ${actualMissingCount}개 | 보통: ${actualNormalCount}개`
                     };
                     break;
                 }
@@ -175,7 +203,7 @@ class LottoAnalyzer {
 
     // 중복 없이 무작위 선택
     selectRandomDistinct(arr, count) {
-        if (!arr || arr.length === 0) return [];
+        if (!arr || arr.length === 0 || count <= 0) return [];
         const selected = [];
         const available = [...arr];
         
