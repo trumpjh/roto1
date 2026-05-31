@@ -13,7 +13,25 @@ class LottoAnalyzer {
     // 외부 API에서 로또 번호 데이터 가져오기
     async fetchLottoData() {
         try {
-            // 먼저 로컬 백업 데이터 시도
+            // Firebase REST API에서 데이터 가져오기
+            const response = await fetch('https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json');
+            if (response.ok) {
+                const raw = await response.json();
+                if (Array.isArray(raw) && raw.length > 0) {
+                    // Firebase 데이터 형식: [{drawNumber, numbers: [...], bonus}, ...]
+                    // 회차 오름차순 정렬 후 numbers 배열만 추출
+                    const sorted = [...raw].sort((a, b) => a.drawNumber - b.drawNumber);
+                    const data = sorted.map(item => item.numbers);
+                    console.log(`Firebase 데이터 로드 성공 (${data.length}회차)`);
+                    return data;
+                }
+            }
+        } catch (error) {
+            console.log('Firebase 데이터 로드 실패, 로컬 데이터 시도:', error);
+        }
+
+        try {
+            // 로컬 백업 데이터 시도
             const response = await fetch('lotto-data.json');
             if (response.ok) {
                 const data = await response.json();
@@ -21,19 +39,7 @@ class LottoAnalyzer {
                 return data;
             }
         } catch (error) {
-            console.log('로컬 데이터 로드 실패, 외부 API 시도:', error);
-        }
-
-        try {
-            // 외부 API 시도
-            const response = await fetch('https://trumpjh.github.io/roto/data/lotto.json');
-            if (response.ok) {
-                const data = await response.json();
-                console.log('외부 API 데이터 로드 성공');
-                return data;
-            }
-        } catch (error) {
-            console.log('외부 API 로드 실패:', error);
+            console.log('로컬 데이터 로드 실패:', error);
         }
 
         // 모두 실패하면 샘플 데이터 사용
