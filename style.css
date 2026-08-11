@@ -63,6 +63,14 @@ h2 {
     gap: 15px;
 }
 
+.recommendation-status {
+    margin-top: 10px;
+    margin-bottom: 5px;
+    color: #4b5563;
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
 h3 {
     color: #764ba2;
     margin-bottom: 15px;

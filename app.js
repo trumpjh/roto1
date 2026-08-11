@@ -322,6 +322,8 @@ const fetchDataBtn = document.getElementById('fetchDataBtn');
 const loadingDiv = document.getElementById('loading');
 const analysisResult = document.getElementById('analysisResult');
 const recommendationSection = document.getElementById('recommendationSection');
+const recommendationTitle = document.getElementById('recommendationTitle');
+const recommendationStatus = document.getElementById('recommendationStatus');
 const frequentNumbersDiv = document.getElementById('frequentNumbers');
 const missingNumbersDiv = document.getElementById('missingNumbers');
 const recommendationsGrid = document.getElementById('recommendationsGrid');
@@ -345,9 +347,21 @@ loadBtn.addEventListener('click', async () => {
         displayColumnAnalysis(columnAnalysis);
         document.getElementById('columnAnalysisSection').style.display = 'block';
 
-        // 추천 결과 표시
-        const recommendations = analyzer.generateRecommendations(analysis);
-        displayRecommendations(recommendations);
+        // ML 결과가 있으면 우선 사용하고, 없으면 기존 추천으로 자동 전환
+        const mlPrediction = await loadMlPrediction();
+        if (mlPrediction) {
+            const mlRecommendations = buildRecommendationsFromML(mlPrediction);
+            recommendationTitle.textContent = '🤖 ML 추천 번호 (10가지 조합)';
+            recommendationStatus.textContent = `ML 모델: ${mlPrediction.model} | 백테스트 평균 일치: ${Number(mlPrediction.backtest?.mean_hit_count || 0).toFixed(3)}개`;
+            recommendationStatus.style.display = 'block';
+            displayRecommendations(mlRecommendations);
+        } else {
+            const recommendations = analyzer.generateRecommendations(analysis);
+            recommendationTitle.textContent = '💡 추천 번호 (10가지 조합)';
+            recommendationStatus.textContent = 'ML 결과 파일이 없어 기존 통계 방식 추천을 표시합니다.';
+            recommendationStatus.style.display = 'block';
+            displayRecommendations(recommendations);
+        }
         recommendationSection.style.display = 'block';
 
     } catch (error) {
@@ -503,21 +517,60 @@ function displayColumnAnalysis(columnAnalysis) {
 
 function displayRecommendations(recommendations) {
     recommendationsGrid.innerHTML = recommendations
-        .map((rec, idx) => `
+        .map((rec, idx) => {
+            const frequentCount = Number.isFinite(rec.frequentCount) ? rec.frequentCount : '-';
+            const missingCount = Number.isFinite(rec.missingCount) ? rec.missingCount : '-';
+            const normalCount = Number.isFinite(rec.normalCount) ? rec.normalCount : '-';
+            return `
             <div class="recommendation-card">
                 <h4>${rec.title}</h4>
                 <div class="combination-info">
-                    <span class="combo-badge frequent">자주: ${rec.frequentCount}</span>
-                    <span class="combo-badge missing">미사용: ${rec.missingCount}</span>
-                    <span class="combo-badge normal">보통: ${rec.normalCount}</span>
+                    <span class="combo-badge frequent">자주: ${frequentCount}</span>
+                    <span class="combo-badge missing">미사용: ${missingCount}</span>
+                    <span class="combo-badge normal">보통: ${normalCount}</span>
                 </div>
                 <div class="recommendation-numbers">
                     ${rec.numbers.map(num => `<div class="lotto-number">${num}</div>`).join('')}
                 </div>
                 <div class="recommendation-description">${rec.description}</div>
             </div>
-        `)
+        `;
+        })
         .join('');
+}
+
+async function loadMlPrediction() {
+    try {
+        const response = await fetch('ml-prediction.json', { cache: 'no-store' });
+        if (!response.ok) {
+            return null;
+        }
+
+        const data = await response.json();
+        if (!Array.isArray(data?.next_draw_prediction?.generated_combinations)) {
+            return null;
+        }
+
+        return data;
+    } catch (error) {
+        console.log('ML 예측 파일 로드 실패:', error);
+        return null;
+    }
+}
+
+function buildRecommendationsFromML(mlPrediction) {
+    const combos = mlPrediction.next_draw_prediction.generated_combinations;
+    return combos
+        .filter(combo => Array.isArray(combo) && combo.length === 6)
+        .slice(0, 10)
+        .map((combo, idx) => ({
+            title: `ML 추천 ${idx + 1}`,
+            numbers: [...combo].sort((a, b) => a - b),
+            frequentCount: NaN,
+            missingCount: NaN,
+            normalCount: NaN,
+            description: '머신러닝 확률 가중치 기반 조합'
+        }));
 }
 
 // 스크린샷 함수
