@@ -5,8 +5,7 @@
   "main": "app.js",
   "scripts": {
     "start": "python -m http.server 8000",
-    "serve": "npx live-server",
-    "ml:predict": "python ml_predict.py"
+    "serve": "npx live-server"
   },
   "keywords": [
     "lotto",

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로또 번호 추천기</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎰 로또 번호 추천기</h1>
+            <p>데이터 분석 기반 과학적 로또 번호 추천</p>
+        </header>
+
+        <div class="content">
+            <section class="analysis-section">
+                <h2>📊 번호 분석</h2>
+                <button id="loadBtn" class="btn-primary">로또 번호 분석하기</button>
+                <div id="loading" class="loading" style="display: none;">
+                    <p>로또 번호를 분석 중입니다...</p>
+                </div>
+                
+                <div id="analysisResult" class="analysis-result" style="display: none;">
+                    <div id="analysisInfo" class="analysis-info"></div>
+                    
+                    <div class="analysis-grid">
+                        <div class="analysis-box">
+                            <h3>🔥 자주 나온 번호 (TOP 12)</h3>
+                            <div id="frequentNumbers" class="number-list"></div>
+                        </div>
+                        <div class="analysis-box">
+                            <h3>⚪ 보통 나온 번호</h3>
+                            <div id="normalNumbers" class="number-list"></div>
+                        </div>
+                        <div class="analysis-box">
+                            <h3>❄️ 나오지 않은 번호 (MISSING)</h3>
+                            <div id="missingNumbers" class="number-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="columnAnalysisSection" class="column-analysis-section" style="display: none;">
+                    <h2>📈 열(Column)별 번호 분석</h2>
+                    <div id="columnAnalysisGrid" class="column-analysis-grid"></div>
+                </div>
+            </section>
+
+            <section class="recommendation-section" id="recommendationSection" style="display: none;">
+                <div class="recommendation-header">
+                    <h2>💡 추천 번호 (10가지 조합)</h2>
+                    <button id="screenshotBtn" class="btn-screenshot" onclick="captureScreenshot()">📸 이미지 저장</button>
+                </div>
+                <div class="recommendations-grid" id="recommendationsGrid"></div>
+            </section>
+
+            <section class="info-section">
+                <h3>📌 정보</h3>
+                <p>✅ 분석 데이터: 최근 20회차 로또 당첨 번호</p>
+                <p>✅ 추천 방식: 자주 나온 번호(3~4개) + 나오지 않은 번호(2~3개) + 보통 나온 번호(1~2개) 조합</p>
+                <p>✅ 총 10개의 서로 다른 번호 추천</p>
+                <p>⚠️ 이 도구는 재미 및 분석 목적입니다. 실제 당첨을 보장하지 않습니다.</p>
+            </section>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
