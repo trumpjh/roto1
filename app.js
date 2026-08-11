@@ -13,7 +13,25 @@ class LottoAnalyzer {
     // 외부 API에서 로또 번호 데이터 가져오기
     async fetchLottoData() {
         try {
-            // 먼저 로컬 백업 데이터 시도
+            // Firebase REST API에서 데이터 가져오기
+            const response = await fetch('https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json');
+            if (response.ok) {
+                const raw = await response.json();
+                if (Array.isArray(raw) && raw.length > 0) {
+                    // Firebase 데이터 형식: [{drawNumber, numbers: [...], bonus}, ...]
+                    // 회차 오름차순 정렬 후 numbers 배열만 추출
+                    const sorted = [...raw].sort((a, b) => a.drawNumber - b.drawNumber);
+                    const data = sorted.map(item => item.numbers);
+                    console.log(`Firebase 데이터 로드 성공 (${data.length}회차)`);
+                    return data;
+                }
+            }
+        } catch (error) {
+            console.log('Firebase 데이터 로드 실패, 로컬 데이터 시도:', error);
+        }
+
+        try {
+            // 로컬 백업 데이터 시도
             const response = await fetch('lotto-data.json');
             if (response.ok) {
                 const data = await response.json();
@@ -21,19 +39,7 @@ class LottoAnalyzer {
                 return data;
             }
         } catch (error) {
-            console.log('로컬 데이터 로드 실패, 외부 API 시도:', error);
-        }
-
-        try {
-            // 외부 API 시도
-            const response = await fetch('https://trumpjh.github.io/roto/data/lotto.json');
-            if (response.ok) {
-                const data = await response.json();
-                console.log('외부 API 데이터 로드 성공');
-                return data;
-            }
-        } catch (error) {
-            console.log('외부 API 로드 실패:', error);
+            console.log('로컬 데이터 로드 실패:', error);
         }
 
         // 모두 실패하면 샘플 데이터 사용
@@ -65,6 +71,46 @@ class LottoAnalyzer {
             [9, 20, 27, 34, 38, 13],
             [2, 23, 29, 36, 41, 12]
         ];
+    }
+
+    // 회차 번호 포함하여 최근 20회차 데이터 가져오기
+    async fetchDataWithDrawNumbers() {
+        try {
+            const response = await fetch('https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json');
+            if (response.ok) {
+                const raw = await response.json();
+                if (Array.isArray(raw) && raw.length > 0) {
+                    const sorted = [...raw].sort((a, b) => a.drawNumber - b.drawNumber);
+                    return sorted.slice(-20).map(item => ({
+                        drawNumber: item.drawNumber,
+                        numbers: item.numbers,
+                        bonus: item.bonus || null
+                    }));
+                }
+            }
+        } catch (error) {
+            console.log('Firebase 로드 실패, 로컬 시도:', error);
+        }
+
+        try {
+            const response = await fetch('lotto-data.json');
+            if (response.ok) {
+                const data = await response.json();
+                return data.slice(-20).map((nums, idx) => ({
+                    drawNumber: `로컬 ${idx + 1}`,
+                    numbers: nums,
+                    bonus: null
+                }));
+            }
+        } catch (error) {
+            console.log('로컬 데이터 로드 실패:', error);
+        }
+
+        return this.getSampleData().map((nums, idx) => ({
+            drawNumber: `샘플 ${idx + 1}`,
+            numbers: nums,
+            bonus: null
+        }));
     }
 
     // 로또 데이터 분석
@@ -272,6 +318,7 @@ class LottoAnalyzer {
 // UI 제어
 const analyzer = new LottoAnalyzer();
 const loadBtn = document.getElementById('loadBtn');
+const fetchDataBtn = document.getElementById('fetchDataBtn');
 const loadingDiv = document.getElementById('loading');
 const analysisResult = document.getElementById('analysisResult');
 const recommendationSection = document.getElementById('recommendationSection');
@@ -310,6 +357,48 @@ loadBtn.addEventListener('click', async () => {
         loadingDiv.style.display = 'none';
     }
 });
+
+fetchDataBtn.addEventListener('click', async () => {
+    fetchDataBtn.disabled = true;
+    fetchDataBtn.textContent = '불러오는 중...';
+    const fetchDataLoading = document.getElementById('fetchDataLoading');
+    const lottoDataList = document.getElementById('lottoDataList');
+    fetchDataLoading.style.display = 'block';
+    lottoDataList.style.display = 'none';
+
+    try {
+        const data = await analyzer.fetchDataWithDrawNumbers();
+        displayLottoDataList(data);
+    } catch (error) {
+        console.error('데이터 불러오기 실패:', error);
+        fetchDataLoading.innerHTML = '<p>❌ 데이터를 불러오는데 실패했습니다.</p>';
+    } finally {
+        fetchDataLoading.style.display = 'none';
+        fetchDataBtn.disabled = false;
+        fetchDataBtn.textContent = '🔍 번호 불러오기';
+    }
+});
+
+function displayLottoDataList(data) {
+    const listDiv = document.getElementById('lottoDataList');
+    const isFirebase = typeof data[0].drawNumber === 'number';
+
+    listDiv.innerHTML = data.map(item => {
+        const label = isFirebase ? `제 ${item.drawNumber}회` : item.drawNumber;
+        const balls = item.numbers.map(num => `<div class="lotto-ball-sm">${num}</div>`).join('');
+        const bonusBall = item.bonus
+            ? `<span class="bonus-separator">+</span><div class="lotto-ball-sm bonus">${item.bonus}</div>`
+            : '';
+        return `
+            <div class="lotto-draw-item">
+                <div class="draw-label">${label}</div>
+                <div class="draw-balls">${balls}${bonusBall}</div>
+            </div>
+        `;
+    }).join('');
+
+    listDiv.style.display = 'block';
+}
 
 function displayAnalysisInfo(analysis) {
     const infoDiv = document.getElementById('analysisInfo');

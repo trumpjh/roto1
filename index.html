@@ -14,6 +14,15 @@
         </header>
 
         <div class="content">
+            <section class="lotto-data-section">
+                <h2>📋 최근 20회차 번호 조회</h2>
+                <button id="fetchDataBtn" class="btn-primary">🔍 번호 불러오기</button>
+                <div id="fetchDataLoading" class="loading" style="display: none;">
+                    <p>데이터를 불러오는 중...</p>
+                </div>
+                <div id="lottoDataList" class="lotto-data-list" style="display: none;"></div>
+            </section>
+
             <section class="analysis-section">
                 <h2>📊 번호 분석</h2>
                 <button id="loadBtn" class="btn-primary">로또 번호 분석하기</button>
