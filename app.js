@@ -73,7 +73,7 @@ class LottoAnalyzer {
         ];
     }
 
-    // 회차 번호 포함하여 최근 20회차 데이터 가져오기
+    // 회차 번호 포함하여 최근 50회차 데이터 가져오기
     async fetchDataWithDrawNumbers() {
         try {
             const response = await fetch('https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json');
@@ -81,7 +81,7 @@ class LottoAnalyzer {
                 const raw = await response.json();
                 if (Array.isArray(raw) && raw.length > 0) {
                     const sorted = [...raw].sort((a, b) => a.drawNumber - b.drawNumber);
-                    return sorted.slice(-20).map(item => ({
+                    return sorted.slice(-50).map(item => ({
                         drawNumber: item.drawNumber,
                         numbers: item.numbers,
                         bonus: item.bonus || null
@@ -96,7 +96,7 @@ class LottoAnalyzer {
             const response = await fetch('lotto-data.json');
             if (response.ok) {
                 const data = await response.json();
-                return data.slice(-20).map((nums, idx) => ({
+                return data.slice(-50).map((nums, idx) => ({
                     drawNumber: `로컬 ${idx + 1}`,
                     numbers: nums,
                     bonus: null
@@ -116,8 +116,8 @@ class LottoAnalyzer {
     // 로또 데이터 분석
     async analyze() {
         this.lottoData = await this.fetchLottoData();
-        // 최근 20회차만 사용
-        this.recentLottoData = this.lottoData.slice(-20);
+        // 최근 50회차만 사용
+        this.recentLottoData = this.lottoData.slice(-50);
         this.calculateFrequency();
         return this.getAnalysisResult();
     }
