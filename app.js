@@ -588,42 +588,36 @@ function buildRecommendationsFromML(mlPrediction) {
     const lowPool = [...new Set([...lowCore, ...byLowestProbability.slice(6, 12).map(item => Number(item.number))])];
 
     const shuffle = list => [...list].sort(() => Math.random() - 0.5);
+    const usedCombinations = new Set();
 
-    const pickUniqueNumbers = (pool, count, preferredList = []) => {
-        const selected = [...preferredList].slice(0, count);
-        const remaining = shuffle(pool.filter(num => !selected.includes(num)));
-
-        while (selected.length < count && remaining.length > 0) {
-            selected.push(remaining.pop());
-        }
-
+    const pickUniqueNumbers = (pool, count, preferredList = [], preferredCount = 3) => {
+        const preferred = shuffle(preferredList).slice(0, Math.min(preferredCount, count));
+        const remaining = shuffle(pool.filter(num => !preferred.includes(num)));
+        const selected = [...preferred, ...remaining.slice(0, count - preferred.length)];
         return [...new Set(selected)].slice(0, count).sort((a, b) => a - b);
     };
 
-    const mixedRecommendations = [];
-    for (let i = 0; i < 3; i++) {
-        const highPart = shuffle(highCore).slice(0, 3);
-        const lowPart = shuffle(lowCore).slice(0, 3);
-        const numbers = [...new Set([...highPart, ...lowPart])].sort((a, b) => a - b);
-        mixedRecommendations.push({
-            title: `혼합 추천 ${i + 1}`,
-            numbers,
-            frequentCount: NaN,
-            missingCount: NaN,
-            normalCount: NaN,
-            description: '고점수와 저점수 번호를 섞은 조합'
-        });
-    }
+    const getUnusedCombination = (createNumbers, maxAttempts = 100) => {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const numbers = createNumbers();
+            const key = numbers.join(',');
+            if (numbers.length === 6 && !usedCombinations.has(key)) {
+                usedCombinations.add(key);
+                return numbers;
+            }
+        }
+        return createNumbers();
+    };
 
     const highRecommendations = [];
     for (let i = 0; i < 4; i++) {
         highRecommendations.push({
             title: `고점수 추천 ${i + 1}`,
-            numbers: pickUniqueNumbers(highPool, 6, highCore),
+            numbers: getUnusedCombination(() => pickUniqueNumbers(highPool, 6, highCore, 3)),
             frequentCount: NaN,
             missingCount: NaN,
             normalCount: NaN,
-            description: '상위 확률 번호 중심 추천'
+            description: '상위 확률 번호 3개 이상을 포함한 분산 조합'
         });
     }
 
@@ -631,11 +625,27 @@ function buildRecommendationsFromML(mlPrediction) {
     for (let i = 0; i < 3; i++) {
         lowRecommendations.push({
             title: `저점수 추천 ${i + 1}`,
-            numbers: pickUniqueNumbers(lowPool, 6, lowCore),
+            numbers: getUnusedCombination(() => pickUniqueNumbers(lowPool, 6, lowCore, 3)),
             frequentCount: NaN,
             missingCount: NaN,
             normalCount: NaN,
-            description: '낮은 확률 번호 중심 추천'
+            description: '하위 확률 번호 3개 이상을 포함한 분산 조합'
+        });
+    }
+
+    const mixedRecommendations = [];
+    for (let i = 0; i < 3; i++) {
+        mixedRecommendations.push({
+            title: `혼합 추천 ${i + 1}`,
+            numbers: getUnusedCombination(() => {
+                const highPart = shuffle(highCore).slice(0, 3);
+                const lowPart = shuffle(lowCore).slice(0, 3);
+                return [...new Set([...highPart, ...lowPart])].sort((a, b) => a - b);
+            }),
+            frequentCount: NaN,
+            missingCount: NaN,
+            normalCount: NaN,
+            description: '고점수 3개와 저점수 3개를 섞은 조합'
         });
     }
 
