@@ -559,18 +559,87 @@ async function loadMlPrediction() {
 }
 
 function buildRecommendationsFromML(mlPrediction) {
-    const combos = mlPrediction.next_draw_prediction.generated_combinations;
-    return combos
-        .filter(combo => Array.isArray(combo) && combo.length === 6)
-        .slice(0, 10)
-        .map((combo, idx) => ({
-            title: `ML 추천 ${idx + 1}`,
-            numbers: [...combo].sort((a, b) => a - b),
+    const topProbNumbers = Array.isArray(mlPrediction?.next_draw_prediction?.top_prob_numbers)
+        ? [...mlPrediction.next_draw_prediction.top_prob_numbers]
+        : [];
+
+    if (topProbNumbers.length === 0) {
+        const combos = mlPrediction?.next_draw_prediction?.generated_combinations || [];
+        return combos
+            .filter(combo => Array.isArray(combo) && combo.length === 6)
+            .slice(0, 10)
+            .map((combo, idx) => ({
+                title: `ML 추천 ${idx + 1}`,
+                numbers: [...combo].sort((a, b) => a - b),
+                frequentCount: NaN,
+                missingCount: NaN,
+                normalCount: NaN,
+                description: '머신러닝 확률 가중치 기반 조합'
+            }));
+    }
+
+    const byProbability = [...topProbNumbers].sort((a, b) => Number(b.probability) - Number(a.probability));
+    const byLowestProbability = [...topProbNumbers].sort((a, b) => Number(a.probability) - Number(b.probability));
+
+    const highCore = [...new Set(byProbability.slice(0, 6).map(item => Number(item.number)))];
+    const lowCore = [...new Set(byLowestProbability.slice(0, 6).map(item => Number(item.number)))];
+
+    const highPool = [...new Set([...highCore, ...byProbability.slice(6, 12).map(item => Number(item.number))])];
+    const lowPool = [...new Set([...lowCore, ...byLowestProbability.slice(6, 12).map(item => Number(item.number))])];
+
+    const shuffle = list => [...list].sort(() => Math.random() - 0.5);
+
+    const pickUniqueNumbers = (pool, count, preferredList = []) => {
+        const selected = [...preferredList].slice(0, count);
+        const remaining = shuffle(pool.filter(num => !selected.includes(num)));
+
+        while (selected.length < count && remaining.length > 0) {
+            selected.push(remaining.pop());
+        }
+
+        return [...new Set(selected)].slice(0, count).sort((a, b) => a - b);
+    };
+
+    const mixedRecommendations = [];
+    for (let i = 0; i < 3; i++) {
+        const highPart = shuffle(highCore).slice(0, 3);
+        const lowPart = shuffle(lowCore).slice(0, 3);
+        const numbers = [...new Set([...highPart, ...lowPart])].sort((a, b) => a - b);
+        mixedRecommendations.push({
+            title: `혼합 추천 ${i + 1}`,
+            numbers,
             frequentCount: NaN,
             missingCount: NaN,
             normalCount: NaN,
-            description: '머신러닝 확률 가중치 기반 조합'
-        }));
+            description: '고점수와 저점수 번호를 섞은 조합'
+        });
+    }
+
+    const highRecommendations = [];
+    for (let i = 0; i < 4; i++) {
+        highRecommendations.push({
+            title: `고점수 추천 ${i + 1}`,
+            numbers: pickUniqueNumbers(highPool, 6, highCore),
+            frequentCount: NaN,
+            missingCount: NaN,
+            normalCount: NaN,
+            description: '상위 확률 번호 중심 추천'
+        });
+    }
+
+    const lowRecommendations = [];
+    for (let i = 0; i < 3; i++) {
+        lowRecommendations.push({
+            title: `저점수 추천 ${i + 1}`,
+            numbers: pickUniqueNumbers(lowPool, 6, lowCore),
+            frequentCount: NaN,
+            missingCount: NaN,
+            normalCount: NaN,
+            description: '낮은 확률 번호 중심 추천'
+        });
+    }
+
+    return [...highRecommendations, ...lowRecommendations, ...mixedRecommendations];
 }
 
 // 스크린샷 함수
