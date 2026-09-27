@@ -1,173 +1,177 @@
 {
   "model": "NumPy Multi-label Logistic Regression",
-  "data_draw_count": 20,
-  "train_sample_count": 7,
-  "test_sample_count": 3,
+  "data_draw_count": 50,
+  "train_sample_count": 40,
+  "test_sample_count": 34,
   "feature_size": 180,
   "backtest": {
-    "mean_hit_count": 1.3333333333333333,
-    "max_hit_count": 2,
+    "mean_hit_count": 0.9117647058823529,
+    "max_hit_count": 3,
     "hit_distribution": {
-      "0": 1,
-      "1": 0,
-      "2": 2,
-      "3": 0,
+      "0": 12,
+      "1": 14,
+      "2": 7,
+      "3": 1,
       "4": 0,
       "5": 0,
       "6": 0
-    }
+    },
+    "walk_forward_draw_count": 34,
+    "frequency_mean_hit_count": 0.8529411764705882,
+    "random_simulated_mean_hit_count": 0.8089411764705883,
+    "random_expected_hit_count": 0.8
   },
   "next_draw_prediction": {
     "top6_numbers": [
-      4,
-      15,
-      17,
-      30,
+      9,
+      18,
+      24,
       38,
+      43,
       44
     ],
     "top_prob_numbers": [
       {
-        "number": 44,
-        "probability": 0.9970554068361899
-      },
-      {
         "number": 38,
-        "probability": 0.9970554068361899
+        "probability": 0.9377684331534095
       },
       {
-        "number": 4,
-        "probability": 0.9970554068361899
-      },
-      {
-        "number": 17,
-        "probability": 0.9970554068361899
-      },
-      {
-        "number": 30,
-        "probability": 0.9970554068361899
-      },
-      {
-        "number": 15,
-        "probability": 0.9970554068361899
-      },
-      {
-        "number": 21,
-        "probability": 0.8975269000204884
-      },
-      {
-        "number": 5,
-        "probability": 0.8975269000204884
+        "number": 44,
+        "probability": 0.9205072487051905
       },
       {
         "number": 18,
-        "probability": 0.8975269000204884
+        "probability": 0.9135592959101831
       },
       {
-        "number": 29,
-        "probability": 0.8975269000204884
+        "number": 24,
+        "probability": 0.855104009180561
       },
       {
-        "number": 37,
-        "probability": 0.8975269000204884
+        "number": 9,
+        "probability": 0.6990711462561237
       },
       {
-        "number": 12,
-        "probability": 0.8975269000204884
+        "number": 43,
+        "probability": 0.649212515403991
       },
       {
         "number": 41,
-        "probability": 0.09822708856690529
+        "probability": 0.6270915195385275
       },
       {
-        "number": 36,
-        "probability": 0.09822708856690529
+        "number": 25,
+        "probability": 0.23447261660848456
       },
       {
-        "number": 13,
-        "probability": 0.09822708856690529
+        "number": 10,
+        "probability": 0.19145632559646802
+      },
+      {
+        "number": 20,
+        "probability": 0.19020985566973284
+      },
+      {
+        "number": 40,
+        "probability": 0.17013629558168292
+      },
+      {
+        "number": 8,
+        "probability": 0.16244078223306196
+      },
+      {
+        "number": 19,
+        "probability": 0.16100198356293832
+      },
+      {
+        "number": 37,
+        "probability": 0.1517107139183755
+      },
+      {
+        "number": 4,
+        "probability": 0.08151615477818194
       }
     ],
     "generated_combinations": [
       [
-        4,
+        6,
+        12,
         18,
-        30,
-        37,
+        38,
+        41,
+        43
+      ],
+      [
+        4,
+        9,
+        18,
+        24,
         38,
         44
       ],
       [
-        5,
-        17,
+        6,
+        10,
         18,
-        29,
-        37,
-        44
-      ],
-      [
-        4,
-        12,
-        18,
-        21,
-        37,
-        38
-      ],
-      [
-        5,
-        17,
-        29,
-        37,
         38,
-        44
-      ],
-      [
-        4,
-        5,
-        18,
-        30,
-        34,
-        44
-      ],
-      [
-        5,
-        12,
-        15,
-        17,
-        18,
-        21
-      ],
-      [
-        15,
-        17,
-        18,
-        30,
-        37,
-        38
+        40,
+        41
       ],
       [
         2,
-        5,
-        12,
-        15,
-        30,
-        37
+        9,
+        18,
+        38,
+        41,
+        43
       ],
       [
-        4,
-        5,
+        9,
+        10,
         18,
+        38,
+        41,
+        44
+      ],
+      [
+        18,
+        24,
         25,
-        30,
-        37
+        38,
+        43,
+        44
       ],
       [
-        18,
-        21,
-        22,
+        6,
+        24,
         29,
-        30,
-        37
+        38,
+        43,
+        44
+      ],
+      [
+        9,
+        10,
+        18,
+        24,
+        25,
+        38
+      ],
+      [
+        12,
+        18,
+        19,
+        20,
+        38,
+        44
+      ],
+      [
+        9,
+        10,
+        24,
+        37,
+        38,
+        41
       ]
     ]
   }

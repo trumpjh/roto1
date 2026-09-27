@@ -351,8 +351,18 @@ loadBtn.addEventListener('click', async () => {
         const mlPrediction = await loadMlPrediction();
         if (mlPrediction) {
             const mlRecommendations = buildRecommendationsFromML(mlPrediction);
+            const backtest = mlPrediction.backtest || {};
+            const testCount = Number(mlPrediction.test_sample_count || backtest.walk_forward_draw_count || 0);
+            const baselineSummary = [
+                Number.isFinite(Number(backtest.frequency_mean_hit_count))
+                    ? `최근 빈도순: ${Number(backtest.frequency_mean_hit_count).toFixed(3)}개`
+                    : null,
+                Number.isFinite(Number(backtest.random_simulated_mean_hit_count))
+                    ? `무작위: ${Number(backtest.random_simulated_mean_hit_count).toFixed(3)}개 (기대 ${Number(backtest.random_expected_hit_count).toFixed(3)}개)`
+                    : null
+            ].filter(Boolean).join(' | ');
             recommendationTitle.textContent = '🤖 ML 추천 번호 (10가지 조합)';
-            recommendationStatus.textContent = `ML 모델: ${mlPrediction.model} | 백테스트 평균 일치: ${Number(mlPrediction.backtest?.mean_hit_count || 0).toFixed(3)}개`;
+            recommendationStatus.textContent = `ML 모델: ${mlPrediction.model} | ${testCount}회 순차 백테스트 ML 평균: ${Number(backtest.mean_hit_count || 0).toFixed(3)}개${baselineSummary ? ` | ${baselineSummary}` : ''}`;
             recommendationStatus.style.display = 'block';
             displayRecommendations(mlRecommendations);
         } else {

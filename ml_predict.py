@@ -1,24 +1,30 @@
 import json
+import random
 from pathlib import Path
 from typing import Dict, List, Tuple
+from urllib.request import Request, urlopen
 
 import numpy as np
 
 
 DATA_FILE = Path("lotto-data.json")
 OUTPUT_FILE = Path("ml-prediction.json")
+FIREBASE_URL = "https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json"
+MAX_DRAWS = 50
 
 
-def load_draws(path: Path) -> List[List[int]]:
-    with path.open("r", encoding="utf-8") as f:
-        raw = json.load(f)
+def parse_draws(raw: object) -> List[List[int]]:
+    if not isinstance(raw, list):
+        raise ValueError("로또 데이터 형식이 배열이 아닙니다.")
 
     draws: List[List[int]] = []
     for i, draw in enumerate(raw):
-        if not isinstance(draw, list):
+        numbers = draw.get("numbers") if isinstance(draw, dict) else draw
+        if not isinstance(numbers, list):
+            print(f"[WARN] 회차 인덱스 {i} 번호 목록을 읽을 수 없어 제외됨: {draw}")
             continue
         nums = []
-        for n in draw:
+        for n in numbers:
             if isinstance(n, int) and 1 <= n <= 45:
                 nums.append(n)
         nums = sorted(set(nums))
@@ -27,6 +33,38 @@ def load_draws(path: Path) -> List[List[int]]:
         else:
             print(f"[WARN] 회차 인덱스 {i} 데이터가 유효하지 않아 제외됨: {draw}")
     return draws
+
+
+def load_draws(path: Path) -> List[List[int]]:
+    with path.open("r", encoding="utf-8") as f:
+        return parse_draws(json.load(f))
+
+
+def load_latest_draws(path: Path) -> List[List[int]]:
+    try:
+        request = Request(FIREBASE_URL, headers={"User-Agent": "lotto-number-recommender"})
+        with urlopen(request, timeout=15) as response:
+            raw = json.load(response)
+
+        if not isinstance(raw, list):
+            raise ValueError("Firebase 로또 데이터 형식이 배열이 아닙니다.")
+
+        records = [record for record in raw if isinstance(record, dict)]
+        records.sort(key=lambda record: int(record.get("drawNumber", 0)))
+        draws = parse_draws(records)
+        if not draws:
+            raise ValueError("Firebase에서 유효한 로또 회차를 찾지 못했습니다.")
+
+        latest_draws = draws[-MAX_DRAWS:]
+        print(f"[DATA] Firebase에서 최신 {len(latest_draws)}회차 로드")
+        return latest_draws
+    except (OSError, TimeoutError, ValueError) as error:
+        print(f"[WARN] Firebase 데이터 로드 실패, 로컬 데이터로 대체: {error}")
+
+    draws = load_draws(path)
+    latest_draws = draws[-MAX_DRAWS:]
+    print(f"[DATA] 로컬 파일에서 {len(latest_draws)}회차 로드")
+    return latest_draws
 
 
 def encode_draw(draw: List[int]) -> np.ndarray:
@@ -94,6 +132,7 @@ def train_multilabel_logistic_regression(
     lr: float = 0.1,
     epochs: int = 1200,
     l2: float = 1e-3,
+    verbose: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray]:
     n_samples, n_features = x_train.shape
     n_outputs = y_train.shape[1]
@@ -112,7 +151,7 @@ def train_multilabel_logistic_regression(
         w -= lr * grad_w
         b -= lr * grad_b
 
-        if epoch % 300 == 0 or epoch == epochs - 1:
+        if verbose and (epoch % 300 == 0 or epoch == epochs - 1):
             eps = 1e-9
             loss = -(y_train * np.log(preds + eps) + (1 - y_train) * np.log(1 - preds + eps)).mean()
             print(f"[TRAIN] epoch={epoch:4d} loss={loss:.6f}")
@@ -133,15 +172,83 @@ def evaluate_hits(predicted: List[int], actual: List[int]) -> int:
     return len(set(predicted) & set(actual))
 
 
-def weighted_sample_without_replacement(probs: np.ndarray, k: int, rng: np.random.Generator) -> List[int]:
-    p = np.clip(probs, 1e-8, None)
-    p = p / p.sum()
-    choices = rng.choice(np.arange(1, 46), size=k, replace=False, p=p)
-    return sorted(choices.tolist())
+def fit_logistic_model(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    verbose: bool = False,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    mean = x_train.mean(axis=0, keepdims=True)
+    std = x_train.std(axis=0, keepdims=True)
+    std[std < 1e-8] = 1.0
+
+    x_train_n = (x_train - mean) / std
+    w, b = train_multilabel_logistic_regression(x_train_n, y_train, verbose=verbose)
+    return w, b, mean, std
+
+
+def walk_forward_backtest(
+    draws: List[List[int]],
+    min_history: int = 10,
+    min_training_samples: int = 6,
+    random_repetitions: int = 500,
+) -> Dict[str, object]:
+    model_hits = []
+    frequency_hits = []
+    random_hit_total = 0
+    rng = random.Random(42)
+
+    first_test_index = min_history + min_training_samples
+    for target_index in range(first_test_index, len(draws)):
+        history = draws[:target_index]
+        actual = draws[target_index]
+        x_train, y_train = build_dataset(history, min_history=min_history)
+        if x_train.shape[0] < min_training_samples:
+            continue
+
+        w, b, mean, std = fit_logistic_model(x_train, y_train)
+        next_x = build_feature(history).reshape(1, -1)
+        model_probs = predict_probabilities((next_x - mean) / std, w, b).ravel()
+        model_hits.append(evaluate_hits(top6_from_probs(model_probs), actual))
+
+        history_vectors = np.array([encode_draw(draw) for draw in history], dtype=np.float64)
+        frequency_scores = build_frequency_feature(history_vectors, 20)
+        frequency_hits.append(evaluate_hits(top6_from_probs(frequency_scores), actual))
+
+        for _ in range(random_repetitions):
+            random_pick = rng.sample(range(1, 46), 6)
+            random_hit_total += evaluate_hits(random_pick, actual)
+
+    hit_distribution: Dict[str, int] = {str(i): 0 for i in range(7)}
+    for hit_count in model_hits:
+        hit_distribution[str(hit_count)] += 1
+
+    random_trial_count = len(model_hits) * random_repetitions
+    return {
+        "mean_hit_count": float(np.mean(model_hits)) if model_hits else 0.0,
+        "max_hit_count": int(np.max(model_hits)) if model_hits else 0,
+        "hit_distribution": hit_distribution,
+        "walk_forward_draw_count": len(model_hits),
+        "frequency_mean_hit_count": float(np.mean(frequency_hits)) if frequency_hits else 0.0,
+        "random_simulated_mean_hit_count": random_hit_total / random_trial_count if random_trial_count else 0.0,
+        "random_expected_hit_count": 0.8,
+    }
+
+
+def weighted_sample_without_replacement(probs: np.ndarray, k: int, rng: random.Random) -> List[int]:
+    numbers = list(range(1, 46))
+    weights = np.clip(probs, 1e-8, None).tolist()
+    choices = []
+
+    for _ in range(min(k, len(numbers))):
+        selected_index = rng.choices(range(len(numbers)), weights=weights, k=1)[0]
+        choices.append(numbers.pop(selected_index))
+        weights.pop(selected_index)
+
+    return sorted(choices)
 
 
 def generate_combinations(probs: np.ndarray, count: int = 10, k: int = 6, seed: int = 42) -> List[List[int]]:
-    rng = np.random.default_rng(seed)
+    rng = random.Random(seed)
     combos: List[List[int]] = []
     seen = set()
 
@@ -157,10 +264,7 @@ def generate_combinations(probs: np.ndarray, count: int = 10, k: int = 6, seed: 
 
 
 def main() -> None:
-    if not DATA_FILE.exists():
-        raise FileNotFoundError("lotto-data.json 파일을 찾을 수 없습니다.")
-
-    draws = load_draws(DATA_FILE)
+    draws = load_latest_draws(DATA_FILE)
     if len(draws) < 16:
         raise ValueError("학습을 위해 최소 16회차 이상의 데이터가 필요합니다.")
 
@@ -168,34 +272,10 @@ def main() -> None:
     if x.shape[0] < 6:
         raise ValueError("학습 샘플이 너무 적습니다. 데이터 회차를 늘려주세요.")
 
-    test_size = max(3, x.shape[0] // 4)
-    train_size = x.shape[0] - test_size
+    backtest = walk_forward_backtest(draws, min_history=10)
 
-    x_train = x[:train_size]
-    y_train = y[:train_size]
-    x_test = x[train_size:]
-    y_test = y[train_size:]
-
-    # 피처 정규화
-    mean = x_train.mean(axis=0, keepdims=True)
-    std = x_train.std(axis=0, keepdims=True)
-    std[std < 1e-8] = 1.0
-
-    x_train_n = (x_train - mean) / std
-    x_test_n = (x_test - mean) / std
-
-    w, b = train_multilabel_logistic_regression(x_train_n, y_train)
-
-    test_probs = predict_probabilities(x_test_n, w, b)
-    hit_counts = []
-    for i in range(test_probs.shape[0]):
-        pred = top6_from_probs(test_probs[i])
-        actual = (np.where(y_test[i] > 0.5)[0] + 1).tolist()
-        hit_counts.append(evaluate_hits(pred, actual))
-
-    hit_distribution: Dict[str, int] = {str(i): 0 for i in range(7)}
-    for h in hit_counts:
-        hit_distribution[str(h)] += 1
+    # Fit the next-draw model on every available supervised training example.
+    w, b, mean, std = fit_logistic_model(x, y, verbose=True)
 
     # 다음 회차 입력 피처: 전체 draws를 history로 사용
     next_x = build_feature(draws).reshape(1, -1)
@@ -214,14 +294,10 @@ def main() -> None:
     output = {
         "model": "NumPy Multi-label Logistic Regression",
         "data_draw_count": len(draws),
-        "train_sample_count": int(train_size),
-        "test_sample_count": int(test_size),
+        "train_sample_count": int(x.shape[0]),
+        "test_sample_count": int(backtest["walk_forward_draw_count"]),
         "feature_size": int(x.shape[1]),
-        "backtest": {
-            "mean_hit_count": float(np.mean(hit_counts)) if hit_counts else 0.0,
-            "max_hit_count": int(np.max(hit_counts)) if hit_counts else 0,
-            "hit_distribution": hit_distribution,
-        },
+        "backtest": backtest,
         "next_draw_prediction": {
             "top6_numbers": next_top6,
             "top_prob_numbers": top_prob_numbers,
@@ -235,8 +311,12 @@ def main() -> None:
     print("\n=== ML 예측 완료 ===")
     print(f"모델: {output['model']}")
     print(f"데이터 회차 수: {output['data_draw_count']}")
-    print(f"학습/테스트 샘플: {train_size}/{test_size}")
+    print(f"최종 모델 학습 샘플: {output['train_sample_count']}")
+    print(f"순차 백테스트 회차: {output['test_sample_count']}")
     print(f"백테스트 평균 일치 개수: {output['backtest']['mean_hit_count']:.3f}")
+    print(f"최근 빈도순 평균 일치 개수: {output['backtest']['frequency_mean_hit_count']:.3f}")
+    print(f"무작위 시뮬레이션 평균 일치 개수: {output['backtest']['random_simulated_mean_hit_count']:.3f}")
+    print(f"무작위 기대 일치 개수: {output['backtest']['random_expected_hit_count']:.3f}")
     print(f"다음 회차 Top6: {next_top6}")
     print(f"결과 파일: {OUTPUT_FILE}")
 
