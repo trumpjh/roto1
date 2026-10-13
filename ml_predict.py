@@ -10,7 +10,11 @@ import numpy as np
 DATA_FILE = Path("lotto-data.json")
 OUTPUT_FILE = Path("ml-prediction.json")
 FIREBASE_URL = "https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json"
-MAX_DRAWS = 50
+MAX_DRAWS = 100
+MODEL_SCORE_WEIGHT = 0.25
+RECOMMENDATION_COUNT = 10
+DIVERSITY_PENALTY = 0.03
+MAX_NUMBER_REUSE = 3
 
 
 def parse_draws(raw: object) -> List[List[int]]:
@@ -163,6 +167,13 @@ def predict_probabilities(x: np.ndarray, w: np.ndarray, b: np.ndarray) -> np.nda
     return sigmoid(x @ w + b)
 
 
+def smooth_probabilities(probs: np.ndarray, model_weight: float = MODEL_SCORE_WEIGHT) -> np.ndarray:
+    scores = np.clip(np.asarray(probs, dtype=np.float64), 1e-8, None)
+    scores = scores * (6.0 / scores.sum())
+    uniform_probability = 6.0 / 45.0
+    return model_weight * scores + (1.0 - model_weight) * uniform_probability
+
+
 def top6_from_probs(probs: np.ndarray) -> List[int]:
     indices = np.argsort(probs)[-6:]
     return sorted((indices + 1).tolist())
@@ -194,7 +205,10 @@ def walk_forward_backtest(
 ) -> Dict[str, object]:
     model_hits = []
     frequency_hits = []
+    model_portfolio_best_hits = []
+    frequency_portfolio_best_hits = []
     random_hit_total = 0
+    random_portfolio_best_total = 0
     rng = random.Random(42)
 
     first_test_index = min_history + min_training_samples
@@ -207,22 +221,48 @@ def walk_forward_backtest(
 
         w, b, mean, std = fit_logistic_model(x_train, y_train)
         next_x = build_feature(history).reshape(1, -1)
-        model_probs = predict_probabilities((next_x - mean) / std, w, b).ravel()
+        model_probs = smooth_probabilities(
+            predict_probabilities((next_x - mean) / std, w, b).ravel()
+        )
         model_hits.append(evaluate_hits(top6_from_probs(model_probs), actual))
+        model_combinations = generate_combinations(
+            model_probs, count=RECOMMENDATION_COUNT, seed=42 + target_index
+        )
+        model_portfolio_best_hits.append(
+            max(evaluate_hits(combo, actual) for combo in model_combinations)
+        )
 
         history_vectors = np.array([encode_draw(draw) for draw in history], dtype=np.float64)
         frequency_scores = build_frequency_feature(history_vectors, 20)
         frequency_hits.append(evaluate_hits(top6_from_probs(frequency_scores), actual))
+        frequency_combinations = generate_combinations(
+            smooth_probabilities(frequency_scores),
+            count=RECOMMENDATION_COUNT,
+            seed=142 + target_index,
+        )
+        frequency_portfolio_best_hits.append(
+            max(evaluate_hits(combo, actual) for combo in frequency_combinations)
+        )
 
         for _ in range(random_repetitions):
             random_pick = rng.sample(range(1, 46), 6)
             random_hit_total += evaluate_hits(random_pick, actual)
+
+        for _ in range(200):
+            random_combinations = [
+                sorted(rng.sample(range(1, 46), 6))
+                for _ in range(RECOMMENDATION_COUNT)
+            ]
+            random_portfolio_best_total += max(
+                evaluate_hits(combo, actual) for combo in random_combinations
+            )
 
     hit_distribution: Dict[str, int] = {str(i): 0 for i in range(7)}
     for hit_count in model_hits:
         hit_distribution[str(hit_count)] += 1
 
     random_trial_count = len(model_hits) * random_repetitions
+    random_portfolio_trial_count = len(model_hits) * 200
     return {
         "mean_hit_count": float(np.mean(model_hits)) if model_hits else 0.0,
         "max_hit_count": int(np.max(model_hits)) if model_hits else 0,
@@ -231,6 +271,9 @@ def walk_forward_backtest(
         "frequency_mean_hit_count": float(np.mean(frequency_hits)) if frequency_hits else 0.0,
         "random_simulated_mean_hit_count": random_hit_total / random_trial_count if random_trial_count else 0.0,
         "random_expected_hit_count": 0.8,
+        "model_portfolio_mean_best_hit_count": float(np.mean(model_portfolio_best_hits)) if model_portfolio_best_hits else 0.0,
+        "frequency_portfolio_mean_best_hit_count": float(np.mean(frequency_portfolio_best_hits)) if frequency_portfolio_best_hits else 0.0,
+        "random_portfolio_simulated_mean_best_hit_count": random_portfolio_best_total / random_portfolio_trial_count if random_portfolio_trial_count else 0.0,
     }
 
 
@@ -247,20 +290,45 @@ def weighted_sample_without_replacement(probs: np.ndarray, k: int, rng: random.R
     return sorted(choices)
 
 
-def generate_combinations(probs: np.ndarray, count: int = 10, k: int = 6, seed: int = 42) -> List[List[int]]:
+def generate_combinations(
+    probs: np.ndarray,
+    count: int = RECOMMENDATION_COUNT,
+    k: int = 6,
+    seed: int = 42,
+    candidate_count: int = 3000,
+) -> List[List[int]]:
     rng = random.Random(seed)
-    combos: List[List[int]] = []
-    seen = set()
+    candidates: Dict[Tuple[int, ...], List[int]] = {}
 
     attempts = 0
-    while len(combos) < count and attempts < count * 200:
+    while len(candidates) < candidate_count and attempts < candidate_count * 10:
         combo = weighted_sample_without_replacement(probs, k, rng)
         key = tuple(combo)
-        if key not in seen:
-            seen.add(key)
-            combos.append(combo)
+        candidates[key] = combo
         attempts += 1
-    return combos
+
+    number_usage = [0] * 45
+    combinations = []
+    while candidates and len(combinations) < count:
+        eligible_candidates = {
+            key: combo
+            for key, combo in candidates.items()
+            if all(number_usage[number - 1] < MAX_NUMBER_REUSE for number in key)
+        }
+        if not eligible_candidates:
+            break
+
+        best_key = max(
+            eligible_candidates,
+            key=lambda key: sum(float(probs[number - 1]) for number in key)
+            - DIVERSITY_PENALTY * sum(number_usage[number - 1] for number in key),
+        )
+        combo = candidates.pop(best_key)
+        combinations.append(combo)
+        for number in combo:
+            number_usage[number - 1] += 1
+
+    return combinations
 
 
 def main() -> None:
@@ -280,10 +348,10 @@ def main() -> None:
     # 다음 회차 입력 피처: 전체 draws를 history로 사용
     next_x = build_feature(draws).reshape(1, -1)
     next_x_n = (next_x - mean) / std
-    next_probs = predict_probabilities(next_x_n, w, b).ravel()
+    next_probs = smooth_probabilities(predict_probabilities(next_x_n, w, b).ravel())
 
     next_top6 = top6_from_probs(next_probs)
-    combos = generate_combinations(next_probs, count=10, k=6, seed=42)
+    combos = generate_combinations(next_probs, count=RECOMMENDATION_COUNT, k=6, seed=42)
 
     ranked = np.argsort(next_probs)[::-1]
     top_prob_numbers = [
@@ -317,6 +385,9 @@ def main() -> None:
     print(f"최근 빈도순 평균 일치 개수: {output['backtest']['frequency_mean_hit_count']:.3f}")
     print(f"무작위 시뮬레이션 평균 일치 개수: {output['backtest']['random_simulated_mean_hit_count']:.3f}")
     print(f"무작위 기대 일치 개수: {output['backtest']['random_expected_hit_count']:.3f}")
+    print(f"10조합 중 최고 일치 평균 (ML): {output['backtest']['model_portfolio_mean_best_hit_count']:.3f}")
+    print(f"10조합 중 최고 일치 평균 (빈도순): {output['backtest']['frequency_portfolio_mean_best_hit_count']:.3f}")
+    print(f"10조합 중 최고 일치 평균 (무작위): {output['backtest']['random_portfolio_simulated_mean_best_hit_count']:.3f}")
     print(f"다음 회차 Top6: {next_top6}")
     print(f"결과 파일: {OUTPUT_FILE}")
 

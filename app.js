@@ -73,7 +73,7 @@ class LottoAnalyzer {
         ];
     }
 
-    // 회차 번호 포함하여 최근 50회차 데이터 가져오기
+    // 회차 번호 포함하여 최근 100회차 데이터 가져오기
     async fetchDataWithDrawNumbers() {
         try {
             const response = await fetch('https://lotte01-131ea-default-rtdb.asia-southeast1.firebasedatabase.app/lottoNumbers.json');
@@ -81,7 +81,7 @@ class LottoAnalyzer {
                 const raw = await response.json();
                 if (Array.isArray(raw) && raw.length > 0) {
                     const sorted = [...raw].sort((a, b) => a.drawNumber - b.drawNumber);
-                    return sorted.slice(-50).map(item => ({
+                    return sorted.slice(-100).map(item => ({
                         drawNumber: item.drawNumber,
                         numbers: item.numbers,
                         bonus: item.bonus || null
@@ -96,7 +96,7 @@ class LottoAnalyzer {
             const response = await fetch('lotto-data.json');
             if (response.ok) {
                 const data = await response.json();
-                return data.slice(-50).map((nums, idx) => ({
+                return data.slice(-100).map((nums, idx) => ({
                     drawNumber: `로컬 ${idx + 1}`,
                     numbers: nums,
                     bonus: null
@@ -116,8 +116,8 @@ class LottoAnalyzer {
     // 로또 데이터 분석
     async analyze() {
         this.lottoData = await this.fetchLottoData();
-        // 최근 50회차만 사용
-        this.recentLottoData = this.lottoData.slice(-50);
+        // 최근 100회차까지 사용
+        this.recentLottoData = this.lottoData.slice(-100);
         this.calculateFrequency();
         return this.getAnalysisResult();
     }
@@ -361,8 +361,15 @@ loadBtn.addEventListener('click', async () => {
                     ? `무작위: ${Number(backtest.random_simulated_mean_hit_count).toFixed(3)}개 (기대 ${Number(backtest.random_expected_hit_count).toFixed(3)}개)`
                     : null
             ].filter(Boolean).join(' | ');
-            recommendationTitle.textContent = '🤖 ML 추천 번호 (10가지 조합)';
-            recommendationStatus.textContent = `ML 모델: ${mlPrediction.model} | ${testCount}회 순차 백테스트 ML 평균: ${Number(backtest.mean_hit_count || 0).toFixed(3)}개${baselineSummary ? ` | ${baselineSummary}` : ''}`;
+            const portfolioSummary = [
+                ['ML 10조합 최고', backtest.model_portfolio_mean_best_hit_count],
+                ['빈도순', backtest.frequency_portfolio_mean_best_hit_count],
+                ['무작위', backtest.random_portfolio_simulated_mean_best_hit_count]
+            ].filter(([, score]) => Number.isFinite(Number(score)))
+                .map(([label, score]) => `${label} ${Number(score).toFixed(3)}개`)
+                .join(' / ');
+            recommendationTitle.textContent = '🤖 확률 완화·분산 ML 추천 (10가지 조합)';
+            recommendationStatus.textContent = `ML 모델: ${mlPrediction.model} | ${testCount}회 순차 백테스트 단일 조합 평균: ${Number(backtest.mean_hit_count || 0).toFixed(3)}개${baselineSummary ? ` | ${baselineSummary}` : ''}${portfolioSummary ? ` | 10조합 최고 일치 평균: ${portfolioSummary}` : ''}`;
             recommendationStatus.style.display = 'block';
             displayRecommendations(mlRecommendations);
         } else {
@@ -531,14 +538,17 @@ function displayRecommendations(recommendations) {
             const frequentCount = Number.isFinite(rec.frequentCount) ? rec.frequentCount : '-';
             const missingCount = Number.isFinite(rec.missingCount) ? rec.missingCount : '-';
             const normalCount = Number.isFinite(rec.normalCount) ? rec.normalCount : '-';
-            return `
-            <div class="recommendation-card">
-                <h4>${rec.title}</h4>
-                <div class="combination-info">
+            const categoryInfo = [rec.frequentCount, rec.missingCount, rec.normalCount].every(Number.isFinite)
+                ? `<div class="combination-info">
                     <span class="combo-badge frequent">자주: ${frequentCount}</span>
                     <span class="combo-badge missing">미사용: ${missingCount}</span>
                     <span class="combo-badge normal">보통: ${normalCount}</span>
-                </div>
+                </div>`
+                : '';
+            return `
+            <div class="recommendation-card">
+                <h4>${rec.title}</h4>
+                ${categoryInfo}
                 <div class="recommendation-numbers">
                     ${rec.numbers.map(num => `<div class="lotto-number">${num}</div>`).join('')}
                 </div>
@@ -569,97 +579,18 @@ async function loadMlPrediction() {
 }
 
 function buildRecommendationsFromML(mlPrediction) {
-    const topProbNumbers = Array.isArray(mlPrediction?.next_draw_prediction?.top_prob_numbers)
-        ? [...mlPrediction.next_draw_prediction.top_prob_numbers]
-        : [];
-
-    if (topProbNumbers.length === 0) {
-        const combos = mlPrediction?.next_draw_prediction?.generated_combinations || [];
-        return combos
-            .filter(combo => Array.isArray(combo) && combo.length === 6)
-            .slice(0, 10)
-            .map((combo, idx) => ({
-                title: `ML 추천 ${idx + 1}`,
-                numbers: [...combo].sort((a, b) => a - b),
-                frequentCount: NaN,
-                missingCount: NaN,
-                normalCount: NaN,
-                description: '머신러닝 확률 가중치 기반 조합'
-            }));
-    }
-
-    const byProbability = [...topProbNumbers].sort((a, b) => Number(b.probability) - Number(a.probability));
-    const byLowestProbability = [...topProbNumbers].sort((a, b) => Number(a.probability) - Number(b.probability));
-
-    const highCore = [...new Set(byProbability.slice(0, 6).map(item => Number(item.number)))];
-    const lowCore = [...new Set(byLowestProbability.slice(0, 6).map(item => Number(item.number)))];
-
-    const highPool = [...new Set([...highCore, ...byProbability.slice(6, 12).map(item => Number(item.number))])];
-    const lowPool = [...new Set([...lowCore, ...byLowestProbability.slice(6, 12).map(item => Number(item.number))])];
-
-    const shuffle = list => [...list].sort(() => Math.random() - 0.5);
-    const usedCombinations = new Set();
-
-    const pickUniqueNumbers = (pool, count, preferredList = [], preferredCount = 3) => {
-        const preferred = shuffle(preferredList).slice(0, Math.min(preferredCount, count));
-        const remaining = shuffle(pool.filter(num => !preferred.includes(num)));
-        const selected = [...preferred, ...remaining.slice(0, count - preferred.length)];
-        return [...new Set(selected)].slice(0, count).sort((a, b) => a - b);
-    };
-
-    const getUnusedCombination = (createNumbers, maxAttempts = 100) => {
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const numbers = createNumbers();
-            const key = numbers.join(',');
-            if (numbers.length === 6 && !usedCombinations.has(key)) {
-                usedCombinations.add(key);
-                return numbers;
-            }
-        }
-        return createNumbers();
-    };
-
-    const highRecommendations = [];
-    for (let i = 0; i < 4; i++) {
-        highRecommendations.push({
-            title: `고점수 추천 ${i + 1}`,
-            numbers: getUnusedCombination(() => pickUniqueNumbers(highPool, 6, highCore, 3)),
+    const combos = mlPrediction?.next_draw_prediction?.generated_combinations || [];
+    return combos
+        .filter(combo => Array.isArray(combo) && combo.length === 6)
+        .slice(0, 10)
+        .map((combo, idx) => ({
+            title: `분산 추천 ${idx + 1}`,
+            numbers: [...combo].sort((a, b) => a - b),
             frequentCount: NaN,
             missingCount: NaN,
             normalCount: NaN,
-            description: '상위 확률 번호 3개 이상을 포함한 분산 조합'
-        });
-    }
-
-    const lowRecommendations = [];
-    for (let i = 0; i < 3; i++) {
-        lowRecommendations.push({
-            title: `저점수 추천 ${i + 1}`,
-            numbers: getUnusedCombination(() => pickUniqueNumbers(lowPool, 6, lowCore, 3)),
-            frequentCount: NaN,
-            missingCount: NaN,
-            normalCount: NaN,
-            description: '하위 확률 번호 3개 이상을 포함한 분산 조합'
-        });
-    }
-
-    const mixedRecommendations = [];
-    for (let i = 0; i < 3; i++) {
-        mixedRecommendations.push({
-            title: `혼합 추천 ${i + 1}`,
-            numbers: getUnusedCombination(() => {
-                const highPart = shuffle(highCore).slice(0, 3);
-                const lowPart = shuffle(lowCore).slice(0, 3);
-                return [...new Set([...highPart, ...lowPart])].sort((a, b) => a - b);
-            }),
-            frequentCount: NaN,
-            missingCount: NaN,
-            normalCount: NaN,
-            description: '고점수 3개와 저점수 3개를 섞은 조합'
-        });
-    }
-
-    return [...highRecommendations, ...lowRecommendations, ...mixedRecommendations];
+            description: '균등 기준으로 확률 점수를 완화하고 조합 간 번호 중복을 줄였습니다.'
+        }));
 }
 
 // 스크린샷 함수
